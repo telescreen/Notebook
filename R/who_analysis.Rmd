@@ -1,0 +1,103 @@
+---
+title: "who’s tuberculosis analysis"
+output: pdf_document
+---
+
+"who" dataset contains tuberculosis (TB) cases broken down by year, country, age, gender, and diagnosis method.
+This dataset is very typical real-life example. It contains redundant columns, odd variable codes and many missing values. We need to tidy this messy dataset.
+
+we have:
+- `country`, `iso2`, `iso3` are variables
+- `year` is also a variable
+- `new_sp_m014` ... are likely to be values, not variables
+
+```{r}
+who1 <- who %>%
+  gather(new_sp_m014:newrel_f65, key="key", value="cases", na.rm = TRUE)
+who1
+```
+
+We can get some hint of the structure of the values in the new `key` column by counting them
+
+```{r}
+who1 %>% count(key)
+```
+
+We can have the data dictionary handy:
+
+1. The first three letters of each column denote whether the column contains new or old cases of TB
+2. The next two letter describe the type of TB:
+* `rel` stands for cases of relapse
+* `ep` stands for cases of extrapulmonary TB
+* `sn` stands for cases of pulmonary TB that could not be diagnosed by a pulmonary smear
+* `sp` stands for cases of pulmonary TB that could be diagnosed by a pulmonary smear
+3. The sixth letter gives the sex of TB patients
+4. The remaining numbers gives the age group. The dataset groups cases into 7 age groups:
+* 014 = 0 - 14 years old
+* 1524 = 15 - 24 years old
+* 2534 = 25 - 34 years old
+* 3544 = 35 - 44 years old
+* 4554 = 45 - 54 years old
+* 5564 = 55 - 64 years old
+* 65 = 65 or older
+
+The names of variables are slightly inconsistent so we need to fix them (`new_rel` instead of `newrel`)
+
+```{r}
+who2 <- who1 %>%
+  mutate(key = stringr::str_replace(key, "newrel", "new_rel"))
+who2
+```
+
+We can now separate the values in each code
+
+```{r}
+who3 <- who2 %>%
+  separate(key, c("new", "type", "sexage"), sep = "_")
+who3
+```
+
+Then we might drop the `new` column because it's constant in this dataset. Let's drop `iso2` and `iso3` too since they are redundant.
+
+```{r}
+who4 <- who3 %>%
+  select(-new, -iso2, -iso3)
+```
+
+Next we'll separate `sexage` into `sex` and `age by splitting after the first character
+
+```{r}
+who5 <- who4 %>%
+  separate(sexage, c("sex", "age"), sep=1)
+who5
+```
+
+We can build the whole tidy process in a long pipeline
+
+```{r}
+library(tidyverse)
+tidywho <- who %>%
+  gather(new_sp_m014:newrel_f65, key="key", value="cases", na.rm = TRUE) %>%
+  mutate(key = stringr::str_replace(key, "newrel", "new_rel")) %>%
+  separate(key, c("new", "type", "sexage"), sep = "_") %>%
+  select(-new, -iso2, -iso3) %>%
+  separate(sexage, c("sex", "age"), sep=1)
+```
+
+```{r}
+cyswho <- tidywho %>% group_by(country, year, sex) %>% summarise(c = sum(cases))
+ggplot(data = cyswho) +
+  geom_bar(mapping = aes(x = year, y = c, fill = sex), stat = "identity") + 
+  facet_wrap(~ country, nrow = 10)
+```
+
+```{r}
+top_country <- tidywho %>% 
+  group_by(country) %>% 
+  summarise(c = sum(cases)) %>%
+  arrange(desc(c))
+ggplot(data = cyswho %>% filter(country %in% top_country$country[1:10])) +
+  geom_bar(mapping = aes(x = year, y = c, fill = sex), stat = "identity") + 
+  facet_wrap(~ country, nrow = 5)
+```
+

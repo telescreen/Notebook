@@ -1,0 +1,171 @@
+---
+title: "gspc"
+author: "HaBui"
+date: "October 15, 2015"
+output: html_document
+---
+
+# Load Data
+
+```{r}
+library(DMwR)
+data(GSPC)
+```
+
+```{r}
+library(xts)
+x1 <- xts(rnorm(100), seq(as.POSIXct("2000-01-01"), len=100, by="day"))
+x1[1:5]
+x2 <- xts(rnorm(100), seq(as.POSIXct("2000-01-01 13:00"), len=100, by="min"))
+x2[1:4]
+x3 <- xts(rnorm(3), as.Date(c("2005-01-01", "2015-10-15", "2015-05-20")))
+x3
+```
+
+Multiple time series can be created in a similar fashion as illustrated below:
+
+```{r}
+mts.vals <- matrix(round(rnorm(25), 2), 5, 5)
+colnames(mts.vals) <- paste('ts', 1:5, seq='')
+mts <- xts(mts.vals, as.POSIXct(c('2003-01-01', '2003-01-04', '2003-01-05', '2003-01-06', '2003-02-16')))
+mts
+mts["2003-01", c("ts2", "ts3")]
+```
+
+The function **index()** and **time()** can be used to "extract" the time tags information of any **xts** object, while the **coredata()** function obtains the data values of the time series:
+
+```{r}
+index(mts)
+coredata(mts)
+```
+
+## Reading the Data from CSV File
+
+Load data into R and create an xts object with the data:
+
+```{r}
+GSPC <- as.xts(read.zoo("sp500.csv", header=T))
+```
+
+## Getting the Data from the Web
+
+```{r}
+library(tseries)
+GSPC <- as.xts(get.hist.quote("^GSPC", start="1970-01-02", end="2009-09-15",
+                              quote=c("Open", "High", "Low", "Close", "Volume", "Adjusted")))
+head(GSPC)
+```
+
+We could load data in R using **getSymbols** method of **quantmod** package.
+
+```{r}
+library(quantmod)
+getSymbols("^GSPC", from="1970-01-01", to="2009-09-15")
+colnames(GSPC) <- c("Open", "High", "Low", "Close", "Volume", "Adjusted")
+```
+
+## Loading Data from RDBMS
+
+```{r}
+library(RPostgreSQL)
+con <- dbConnect(PostgreSQL(), host="192.168.122.9", port="5432", user="gspc", password="", dbname="gspc")
+allQuotes <- dbGetQuery(con, "select * from gspc")
+GSPC <- xts(allQuotes[,-1], order.by=as.Date(allQuotes[,1]))
+head(GSPC)
+dbDisconnect(con)
+```
+
+# Defining the Prediction Tasks
+
+## What to Predict?
+If the prices vary more than p%, we consider this worth-while in terms of trading (eg., covering transaction costs). In this context, we want our prediction models to forecast whether this margin is attainable in the next k days.
+
+Let the daily average price be approximated by
+
+$$\bar{P_i} = \frac{C_i + H_i + L_i}{3}$$
+
+Let $V_i$ be the set of k percentage variations of today's close to the following k days average prices (often called arithmetic returns):
+
+$$V_i = \{ \frac{\bar{P_{i+j}} - C_i}{C_i} \}^k $$
+
+Our indicator variable is the total sum of the variations whose absolute value is above our target margin p%:
+
+$$ T_i = \sum_{v} \{ v \in V_i : v > p\% \vee v < -p\% \} $$
+
+The general idea of the variable T is to signal k-days period that have several days with average daily prices clearly above the target variation. High positive values of T mean that there are several daily prices that are p% higher that today's close. On the other hand, highly negative values of T suggest sell actions, given the prices will probably decline. 
+
+```{r}
+T.ind <- function(quotes, tgt.margin=0.025, n.days = 10) {
+  v <- apply(HLC(quotes), 1, mean)
+  r <- matrix(NA, ncol = n.days, nrow = NROW(quotes))
+  for (x in 1:n.days) r[,x] <- Next(Delt(v, k=x), x)
+  x <- apply(r, 1, function(x) sum(x[x > tgt.margin | x < -tgt.margin]))
+  if (is.xts(quotes))
+    xts(x, time(quotes))
+  else x
+}
+```
+
+We can get a better idea of the behavior of this indicator by seeing Figure which is produced by the following code:
+
+```{r}
+candleChart(last(GSPC, "3 months"), theme="white", TA=NULL)
+avgPrice <- function(p) apply(HLC(p), 1, mean)
+addAvgPrice <- newTA(FUN = avgPrice, col=1, legend="AvgPrice")
+addT.ind <- newTA(FUN=T.ind, col="red", legend="tgtRet")
+addAvgPrice(on = 1)
+addT.ind()
+```
+
+## Which predictors?
+
+We have defined an indicator (T) that summarizes the behavior of the price series in the next k days. Our data mining goal will be to predict this behavior. Instead of using again a single indicator to describe these recent dynamics, we will use several indicators, trying to capture different properties of the price time series to facilitate the forecasting task.
+
+The amount of technical indicators available can be overwhelming. In R we can find a very good sample of them in package TTR (Ulrich 2009).
+
+Feature selection problem, can be informally defined as the task of finding the most adequate subset of available input variables for a modeling task
+
+* Feature filters
+* Feature wrappers
+
+The former are independent of the modeling tool that will be used after the feature selection phase. They basically try to use some statistical properties of the features to select the final set of features. The wrapper approaches include the modeling tool in the selection process. They carry out an iterative search process where at each step a candidate set of features is tried with the modeling tool and the respective results are recorded.
+
+```{r}
+myATR <- function(x) ATR(HLC(x))[,"atr"]
+mySMI <- function(x) SMI(HLC(x))[, "SMI"]
+myADX <- function(x) ADX(HLC(x))[, "ADX"]
+myAroon <- function(x) aroon(x[, c("High", "Low")])$oscillator
+myBB <- function(x) BBands(HLC(x))[, "pctB"]
+myChaikinVol <- function(x) Delt(chaikinVolatility(x[, c("High", "Low")]))[, 1]
+myCLV <- function(x) EMA(CLV(HLC(x)))[, 1]
+myEMV <- function(x) EMV(x[, c("High", "Low")], x[, "Volume"])[, 2]
+myMACD <- function(x) MACD(Cl(x))[, 2]
+myMFI <- function(x) MFI(x[, c("High", "Low", "Close")], x[, "Volume"])
+mySAR <- function(x) SAR(x[, c("High", "Close")])[, 1]
+myVolat <- function(x) volatility(OHLC(x), calc="garman")[, 1]
+```
+
+We will try to reduce the set of variables using a feature selection method. 
+
+We will split the available data into 2 separate sets: 
+* one used for constructing the trading system: the first 30 years of quotes of S&P 500
+* other to test it: the remaining data (around 9 years). We must leave this final test set out of this feature selection process to ensure unbiased results.
+
+```{r}
+library('randomForest')
+data.model <- specifyModel(T.ind(GSPC) ~ Delt(Cl(GSPC),k=1:10) +
+  myATR(GSPC) + mySMI(GSPC) + myADX(GSPC) + myAroon(GSPC) +
+  myBB(GSPC) + myChaikinVol(GSPC) + myCLV(GSPC) +
+  CMO(Cl(GSPC)) + EMA(Delt(Cl(GSPC))) + myEMV(GSPC) +
+  myVolat(GSPC) + myMACD(GSPC) + myMFI(GSPC) + RSI(Cl(GSPC)) +
+  mySAR(GSPC) + runMean(Cl(GSPC)) + runSD(Cl(GSPC)))
+set.seed(1234)
+rf <- buildModel(data.model, method='randomForest', 
+                 training.per=c(start(GSPC), index(GSPC["1999-12-31"])),
+                 ntree=50, importance=T)
+```
+
+For regression problems, the R implementation of random forests estimates variable importance with 2 alternative scores
+* The percentage increase in the error of the forest. This is measured by calculating the increase in the mean squared error of each tree on an out-of-bag sample when each variable is removed.
+* The decrease in node impurity that is accountable with each variable, again averaged over all trees.
+
