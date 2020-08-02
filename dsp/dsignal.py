@@ -41,6 +41,12 @@ class Signal:
     def fold(self):
         """ Return a new signal with y(n) = x(-n) """
         return Signal(-np.fliplr(self._time), np.fliplr(self._value))
+    
+    def tile(self, n: int):
+        """ Return n period periodic signal from current signal """
+        lbound = np.min(self._time)
+        hbound = len(self) * n - np.max(self._time)
+        return Signal(np.arange(lbound, hbound), np.tile(self._value, n))
 
     def __add__(self, oSignal):
         lbound = min(np.min(self._time), np.min(oSignal.time))
