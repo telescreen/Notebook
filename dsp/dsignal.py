@@ -1,96 +1,71 @@
 #!/usr/bin/env python3
 
 import numpy as np
+from typing import Callable
+from collections import namedtuple
 
-class Signal:
-    def __init__(self, time: np.ndarray, value: np.ndarray):
-        """ Time is the time sequence. x is the values """
-        if not isinstance(time, np.ndarray) or not isinstance(value, np.ndarray):
-            raise ValueError("Time and Signal needs to be numpy array.")
-        self._time = time
-        self._value = value
 
-    @property
-    def time(self):
-        return self._time
+Signal = namedtuple('Signal', ['time', 'value'])
 
-    @property
-    def value(self):
-        return self._value
+def sigscale(signal: Signal, alpha: float) -> Signal:
+    """ Return a new Signal, whose its value is scaled by alpha """
+    return (signal.time, signal.value * alpha)
 
-    def scale(self, alpha: float):
-        """ Return a new Signal, whose its value is scaled by alpha """
-        return Signal(self._time, self._value * alpha)
 
-    def shift(self, k: int):
-        """ Return a new Signal, whose its time is shifted by k units """
-        return Signal(self._time + k, self._value)
+def sigshift(signal: Signal, k: int) -> Signal:
+    """ Return a new Signal, whose its time is shifted by k units """
+    return Signal(signal.time + k, signal.value)
 
-    def sample_sum(self, n1: int, n2: int) -> float:
-        """ Return sum of samples whose indexes are betwen n1 and n2 """
-        return np.sum(self._value[(n1 <= self._time) & (self._time <= n2)])
 
-    def sample_product(self, n1: int, n2: int) -> float:
-        """ Return product of samples whose indexes are betwen n1 and n2 """
-        return np.product(self._value[(n1 <= self._time) & (self._time <= n2)])
+def sample_sum(signal: Signal, n1: int, n2: int) -> float:
+    """ Return sum of samples whose indexes are betwen n1 and n2 """
+    return np.sum(signal.value[(n1 <= signal.time) & (signal.time <= n2)])
 
-    def energy(self) -> float:
-        """ Return energy of this signal """
-        return np.sum(self._value * self._value)
 
-    def fold(self):
-        """ Return a new signal with y(n) = x(-n) """
-        return Signal(-np.fliplr(self._time), np.fliplr(self._value))
-    
-    def tile(self, n: int):
-        """ Return n period periodic signal from current signal """
-        lbound = np.min(self._time)
-        hbound = len(self) * n - np.max(self._time)
-        return Signal(np.arange(lbound, hbound), np.tile(self._value, n))
+def sample_product(signal: Signal, n1: int, n2: int) -> float:
+    """ Return product of samples whose indexes are betwen n1 and n2 """
+    return np.product(signal.value[(n1 <= signal.time) & (signal.time <= n2)])
 
-    def __add__(self, oSignal):
-        lbound = min(np.min(self._time), np.min(oSignal.time))
-        hbound = max(np.max(self._time), np.max(oSignal.time))
-        n = np.arange(lbound, hbound + 1)
-        y1 = np.zeros(hbound - lbound + 1)
-        y2 = np.zeros(hbound - lbound + 1)
-        y1[(lbound <= self._time) & (self._time <= hbound)] = self._value
-        y2[(lbound <= oSignal.time) & (oSignal.time <= hbound)] = oSignal.value
-        return Signal(n, y1 + y2)
 
-    def __neg__(self):
-        return Signal(self._time, -self._value)
+def energy(signal: Signal) -> float:
+    """ Return energy of this signal """
+    return np.sum(signal.value * signal.value)
 
-    def __sub__(self, oSignal):
-        return self.__add__(-oSignal)
 
-    def __mul__(self, oSignal):
-        if isinstance(oSignal, int):
-            return Signal(self._time, oSignal * self._value)
+def sigfold(signal: Signal) -> Signal:
+    """ Return a new signal with y(n) = x(-n) """
+    return Signal(-np.flipud(signal.time), np.flipud(signal.value))
 
-        elif isinstance(oSignal, np.ndarray):
-            if self._value.shape != oSignal.shape:
-                raise ValueError("2 arrays should have the same shape")
-            return Signal(self._time, oSignal * self._value)
 
-        elif isinstance(oSignal, Signal):
-            lbound = min(np.min(self._time), np.min(oSignal.time))
-            hbound = max(np.max(self._time), np.max(oSignal.time))
-            n = np.arange(lbound, hbound + 1)
-            y1 = np.zeros(hbound - lbound + 1)
-            y2 = np.zeros(hbound - lbound + 1)
-            y1[(lbound <= self._time) & (self._time <= hbound)] = self._value
-            y2[(lbound <= oSignal.time) & (oSignal.time <= hbound)] = oSignal.value
-            return Signal(n, y1 * y2)
+def tile(signal: Signal, n: int) -> Signal:
+    """ Return n period periodic signal from current signal
+    Input: n = period
+    """
+    lbound = np.min(signal.time)
+    hbound = len(signal.value) * (n / 2 - 1) - np.max(signal.time) - 1
+    return Signal(np.arange(lbound, hbound), np.tile(signal.value, n))
 
-    def __rmul__(self, num):
-        return self.__mul__(num)
 
-    def __len__(self):
-        return self._value.shape[0]
+def sigadd(x: Signal, y: Signal) -> Signal:
+    lbound = min(np.min(x.time), np.min(y.time))
+    hbound = max(np.max(x.time), np.max(y.time))
+    n = np.arange(lbound, hbound + 1)
+    y1 = np.zeros(hbound - lbound + 1)
+    y2 = np.zeros(hbound - lbound + 1)
+    y1[(lbound <= x.time) & (x.time <= hbound)] = x.value
+    y2[(lbound <= y.time) & (y.time <= hbound)] = y.value
+    return Signal(n, y1 + y2)
 
-    def __repr__(self):
-        return "t: {}\nx: {}".format(self._time, self._value)
+
+def sigmult(x: Signal, y: Signal) -> Signal:
+    lbound = min(np.min(x.time), np.min(y.time))
+    hbound = max(np.max(x.time), np.max(y.time))
+    n = np.arange(lbound, hbound + 1)
+    y1 = np.zeros(hbound - lbound + 1)
+    y2 = np.zeros(hbound - lbound + 1)
+    y1[(lbound <= x.time) & (x.time <= hbound)] = x.value
+    y2[(lbound <= y.time) & (y.time <= hbound)] = y.value
+    return Signal(n, y1 * y2)
 
 
 def impseq(n0: int, n1: int, n2: int) -> Signal:
@@ -110,6 +85,7 @@ def stepseq(n0: int, n1: int, n2: int) -> Signal:
 
 
 def expseq(n1: int, n2: int, a: float) -> Signal:
+    """ Generate a power signal in range n1 : n2 """
     t = np.arange(n1, n2 + 1)
     return Signal(t, np.power(a, t))
 
@@ -118,10 +94,10 @@ def randseq(n1: int, n2: int) -> Signal:
     from numpy.random import default_rng
     rng = default_rng()
     t = np.arange(n1, n2 + 1)
-    return Signal(t, rng.standard_normal())
+    return Signal(t, rng.standard_normal(n2-n1+1))
 
 
-if __name__ == "__main__":
-    x = stepseq(0, -2, 2)
-    a = np.array([1,2,3,4,5])
-    print(a * x)
+def genseq(n1: int, n2: int, f: Callable[[np.ndarray], np.ndarray]) -> Signal:
+    """ Generate a signal in range n1 : n2 with signal value calculated by f """
+    t = np.arange(n1, n2+1)
+    return Signal(t, f(t))
