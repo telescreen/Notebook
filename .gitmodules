@@ -1,3 +1,3 @@
 [submodule "ThinkBayes"]
-	path = ThinkBayes
+	path = Statistics
 	url = https://github.com/AllenDowney/ThinkBayes.git
