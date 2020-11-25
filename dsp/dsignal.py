@@ -9,7 +9,7 @@ Signal = namedtuple('Signal', ['time', 'value'])
 
 def sigscale(signal: Signal, alpha: float) -> Signal:
     """ Return a new Signal, whose its value is scaled by alpha """
-    return (signal.time, signal.value * alpha)
+    return Signal(signal.time, signal.value * alpha)
 
 
 def sigshift(signal: Signal, k: int) -> Signal:
@@ -37,7 +37,7 @@ def sigfold(signal: Signal) -> Signal:
     return Signal(-np.flipud(signal.time), np.flipud(signal.value))
 
 
-def tile(signal: Signal, n: int) -> Signal:
+def sigtile(signal: Signal, n: int) -> Signal:
     """ Return n period periodic signal from current signal
     Input: n = period
     """
@@ -49,55 +49,53 @@ def tile(signal: Signal, n: int) -> Signal:
 def sigadd(x: Signal, y: Signal) -> Signal:
     lbound = min(np.min(x.time), np.min(y.time))
     hbound = max(np.max(x.time), np.max(y.time))
-    n = np.arange(lbound, hbound + 1)
+    n = np.arange(lbound, hbound+1)
     y1 = np.zeros(hbound - lbound + 1)
     y2 = np.zeros(hbound - lbound + 1)
-    y1[(lbound <= x.time) & (x.time <= hbound)] = x.value
-    y2[(lbound <= y.time) & (y.time <= hbound)] = y.value
+    y1[(n >= np.min(x.time)) & (n <= np.max(x.time))] = x.value
+    y2[(n >= np.min(y.time)) & (n <= np.max(y.time))] = y.value
     return Signal(n, y1 + y2)
 
 
 def sigmult(x: Signal, y: Signal) -> Signal:
     lbound = min(np.min(x.time), np.min(y.time))
     hbound = max(np.max(x.time), np.max(y.time))
-    n = np.arange(lbound, hbound + 1)
+    n = np.arange(lbound, hbound+1)
     y1 = np.zeros(hbound - lbound + 1)
     y2 = np.zeros(hbound - lbound + 1)
-    y1[(lbound <= x.time) & (x.time <= hbound)] = x.value
-    y2[(lbound <= y.time) & (y.time <= hbound)] = y.value
+    y1[(n >= np.min(x.time)) & (n <= np.max(x.time))] = x.value
+    y2[(n >= np.min(y.time)) & (n <= np.max(y.time))] = y.value
     return Signal(n, y1 * y2)
 
 
-def impseq(n0: int, n1: int, n2: int) -> Signal:
+def impseq(n0: int, n1: int, n2: int):
     """ Generate signal delta(n-n0). n1 <= n <= n2 """
     t = np.arange(n1, n2 + 1)
     x = np.zeros(n2 - n1 + 1)
     x[t == n0] = 1
-    return Signal(t, x)
+    return x
 
 
-def stepseq(n0: int, n1: int, n2: int) -> Signal:
+def stepseq(n0: int, n1: int, n2: int):
     """ Generate signal unit(n-n0). n1 <= n <= n2 """
     t = np.arange(n1, n2 + 1)
     x = np.zeros(n2 - n1 + 1)
     x[t >= n0] = 1
-    return Signal(t, x)
+    return x
 
 
-def expseq(n1: int, n2: int, a: float) -> Signal:
+def expseq(n1: int, n2: int, a: float):
     """ Generate a power signal in range n1 : n2 """
     t = np.arange(n1, n2 + 1)
-    return Signal(t, np.power(a, t))
+    return np.power(a, t)
 
 
-def randseq(n1: int, n2: int) -> Signal:
+def randseq(n1: int, n2: int):
     from numpy.random import default_rng
     rng = default_rng()
-    t = np.arange(n1, n2 + 1)
-    return Signal(t, rng.standard_normal(n2-n1+1))
+    return rng.standard_normal(n2-n1+1)
 
 
-def genseq(n1: int, n2: int, f: Callable[[np.ndarray], np.ndarray]) -> Signal:
-    """ Generate a signal in range n1 : n2 with signal value calculated by f """
-    t = np.arange(n1, n2+1)
-    return Signal(t, f(t))
+def genseq(n1: int, n2: int, f: Callable[[np.ndarray], np.ndarray]):
+    """ Generate a signal in range n1 : n2 with signal value calculated by f """    
+    return f(np.arange(n1, n2+1))
