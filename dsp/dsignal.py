@@ -97,5 +97,5 @@ def randseq(n1: int, n2: int):
 
 
 def genseq(n1: int, n2: int, f: Callable[[np.ndarray], np.ndarray]):
-    """ Generate a signal in range n1 : n2 with signal value calculated by f """    
+    """ Generate a signal in range n1 : n2 with signal value calculated by f """
     return f(np.arange(n1, n2+1))
