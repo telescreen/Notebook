@@ -2,70 +2,67 @@
 
 import numpy as np
 from typing import Callable
-from collections import namedtuple
 
 
-Signal = namedtuple('Signal', ['time', 'value'])
-
-def sigscale(signal: Signal, alpha: float) -> Signal:
+def sigscale(x, alpha: float):
     """ Return a new Signal, whose its value is scaled by alpha """
-    return Signal(signal.time, signal.value * alpha)
+    return x * alpha
 
 
-def sigshift(signal: Signal, k: int) -> Signal:
+def sigshift(t, x, k: int):
     """ Return a new Signal, whose its time is shifted by k units """
-    return Signal(signal.time + k, signal.value)
+    return (t+k, x)
 
 
-def sample_sum(signal: Signal, n1: int, n2: int) -> float:
+def sample_sum(t, x, n1: int, n2: int) -> float:
     """ Return sum of samples whose indexes are betwen n1 and n2 """
-    return np.sum(signal.value[(n1 <= signal.time) & (signal.time <= n2)])
+    return np.sum(x[(n1 <= t) & (t <= n2)])
 
 
-def sample_product(signal: Signal, n1: int, n2: int) -> float:
+def sample_product(t, x, n1: int, n2: int) -> float:
     """ Return product of samples whose indexes are betwen n1 and n2 """
-    return np.product(signal.value[(n1 <= signal.time) & (signal.time <= n2)])
+    return np.product(x[(n1 <= t) & (t <= n2)])
 
 
-def energy(signal: Signal) -> float:
+def energy(x) -> float:
     """ Return energy of this signal """
-    return np.sum(signal.value * signal.value)
+    return np.sum(x**2)
 
 
-def sigfold(signal: Signal) -> Signal:
+def sigfold(t, x):
     """ Return a new signal with y(n) = x(-n) """
-    return Signal(-np.flipud(signal.time), np.flipud(signal.value))
+    return -np.flipud(t), np.flipud(x)
 
 
-def sigtile(signal: Signal, n: int) -> Signal:
+def sigtile(t, x, n: int):
     """ Return n period periodic signal from current signal
     Input: n = period
     """
-    lbound = np.min(signal.time)
-    hbound = len(signal.value) * (n / 2 - 1) - np.max(signal.time) - 1
-    return Signal(np.arange(lbound, hbound), np.tile(signal.value, n))
+    lbound = np.min(t)
+    hbound = len(t) * (n / 2 - 1) - np.max(t) - 1
+    return np.arange(lbound, hbound), np.tile(x, n)
 
 
-def sigadd(x: Signal, y: Signal) -> Signal:
-    lbound = min(np.min(x.time), np.min(y.time))
-    hbound = max(np.max(x.time), np.max(y.time))
+def sigadd(tx, x, ty, y):
+    lbound = min(np.min(tx), np.min(ty))
+    hbound = max(np.max(tx), np.max(ty))
     n = np.arange(lbound, hbound+1)
     y1 = np.zeros(hbound - lbound + 1)
     y2 = np.zeros(hbound - lbound + 1)
-    y1[(n >= np.min(x.time)) & (n <= np.max(x.time))] = x.value
-    y2[(n >= np.min(y.time)) & (n <= np.max(y.time))] = y.value
-    return Signal(n, y1 + y2)
+    y1[(n >= np.min(tx)) & (n <= np.max(tx))] = x
+    y2[(n >= np.min(ty)) & (n <= np.max(ty))] = y
+    return n, y1 + y2
 
 
-def sigmult(x: Signal, y: Signal) -> Signal:
-    lbound = min(np.min(x.time), np.min(y.time))
-    hbound = max(np.max(x.time), np.max(y.time))
+def sigmult(tx, x, ty, y):
+    lbound = min(np.min(tx), np.min(ty))
+    hbound = max(np.max(tx), np.max(ty))
     n = np.arange(lbound, hbound+1)
     y1 = np.zeros(hbound - lbound + 1)
     y2 = np.zeros(hbound - lbound + 1)
-    y1[(n >= np.min(x.time)) & (n <= np.max(x.time))] = x.value
-    y2[(n >= np.min(y.time)) & (n <= np.max(y.time))] = y.value
-    return Signal(n, y1 * y2)
+    y1[(n >= np.min(tx)) & (n <= np.max(tx))] = x
+    y2[(n >= np.min(ty)) & (n <= np.max(ty))] = y
+    return (n, y1 * y2)
 
 
 def impseq(n0: int, n1: int, n2: int):
@@ -99,3 +96,14 @@ def randseq(n1: int, n2: int):
 def genseq(n1: int, n2: int, f: Callable[[np.ndarray], np.ndarray]):
     """ Generate a signal in range n1 : n2 with signal value calculated by f """
     return f(np.arange(n1, n2+1))
+
+
+def conv_m(tx, x, ty, y):
+    """ Modified convolution routine for signal processing 
+    [tz, z] = conv_m(tx, x, ty, y)
+    [tz, z] convolution result
+    """
+    tzb = tx[0] + ty[0]
+    tze = tx[-1] + ty[-1]
+    return np.arange(tzb, tze + 1), np.convolve(x, y)
+    
